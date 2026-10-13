@@ -16,5 +16,9 @@ class Listener(User):
     __tablename__ = 'Listener'
     id: Mapped[int] = mapped_column(ForeignKey('User.id'), primary_key=True)
     favourite_tracks: Mapped[List["Track"]] = relationship(secondary="Favourite")
-    sessions: Mapped[list["FocusSession"]] = relationship(back_populates="listener")
+    sessions: Mapped[list["FocusSession"]] = relationship(
+        back_populates="listener",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     __mapper_args__ = {"polymorphic_identity": "listener"}

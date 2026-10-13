@@ -4,6 +4,15 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import config
 from app.models.Base import Base
+from datetime import datetime, UTC
+
+from app.models.User import User
+from app.models.Listener import Listener
+from app.models.Administrator import Administrator
+from app.models.Mood import Mood
+from app.models.Track import Track
+from app.models.Playlist import Playlist
+from app.models.FocusSession import FocusSession
 
 
 TEST_DB_NAME = "lofidb_test"
@@ -75,3 +84,84 @@ def db(engine):
     session.close()
     transaction.rollback()
     connection.close()
+
+@pytest.fixture
+def seed(db):
+    """Создаёт 5 заглушек каждой сущности и возвращает их списки."""
+    users = [
+        User(email=f"user{i}@x.com", username=f"user{i}",
+             password="hash", type="user")
+        for i in range(5)
+    ]
+    listeners = [
+        Listener(email=f"listener{i}@x.com", username=f"listener{i}",
+                 password="hash", type="listener")
+        for i in range(5)
+    ]
+    admins = [
+        Administrator(email=f"admin{i}@x.com", username=f"admin{i}",
+                      password="hash", type="administrator")
+        for i in range(5)
+    ]
+    moods = [Mood(name=f"Mood{i}") for i in range(5)]
+
+    db.add_all(users + listeners + admins + moods)
+    db.flush()
+
+    tracks = [
+        Track(
+            title=f"Track{i}",
+            file_url=f"http://x/{i}",
+            duration_sec=180 + i,
+            bpm=90 + i * 10,
+            added_by=admins[i % len(admins)],
+        )
+        for i in range(5)
+    ]
+    db.add_all(tracks)
+    db.flush()
+
+    for i, track in enumerate(tracks):
+        track.moods.append(moods[i % len(moods)])
+
+    playlists = [
+        Playlist(
+            title=f"Playlist{i}",
+            description=f"Desc{i}",
+            mood_id=moods[i % len(moods)].id,
+            created_by=admins[i % len(admins)].id,
+        )
+        for i in range(5)
+    ]
+    db.add_all(playlists)
+    db.flush()
+
+    for i, playlist in enumerate(playlists):
+        playlist.tracks.append(tracks[i % len(tracks)])
+        playlist.tracks.append(tracks[(i + 1) % len(tracks)])
+
+    for i, listener in enumerate(listeners):
+        listener.favourite_tracks.append(tracks[i % len(tracks)])
+
+    sessions = [
+        FocusSession(
+            listener_id=listeners[i % len(listeners)].id,
+            playlist_id=playlists[i % len(playlists)].id,
+            started_at=datetime.now(UTC),
+            planned_duration_sec=3600,
+            status="active" if i % 2 == 0 else "completed",
+        )
+        for i in range(5)
+    ]
+    db.add_all(sessions)
+    db.flush()
+
+    return {
+        "users": users,
+        "listeners": listeners,
+        "admins": admins,
+        "moods": moods,
+        "tracks": tracks,
+        "playlists": playlists,
+        "sessions": sessions,
+    }

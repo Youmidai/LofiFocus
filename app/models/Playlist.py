@@ -4,11 +4,13 @@ from typing import List, TYPE_CHECKING
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey
+
 from app.models.Base import Base
 
 if TYPE_CHECKING:
     from app.models.Administrator import Administrator
     from app.models.FocusSession import FocusSession
+    from app.models.Mood import Mood
     from app.models.Track import Track
 
 class Playlist(Base):
@@ -16,8 +18,13 @@ class Playlist(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
     description: Mapped[str]
-    mood_id: Mapped[int] = mapped_column(ForeignKey('Mood.id'))
+    mood_id: Mapped[int] = mapped_column(ForeignKey('Mood.id', ondelete="CASCADE"))
     created_by: Mapped[int] = mapped_column(ForeignKey('Administrator.id'))
     tracks: Mapped[List["Track"]] = relationship(secondary="PlaylistTrack")
     creator: Mapped["Administrator"] = relationship(back_populates="playlists")
-    sessions: Mapped[list["FocusSession"]] = relationship(back_populates="playlist")
+    sessions: Mapped[list["FocusSession"]] = relationship(
+        back_populates="playlist",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    mood: Mapped["Mood"] = relationship(back_populates="playlists")
