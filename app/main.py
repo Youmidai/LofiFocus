@@ -1,3 +1,7 @@
+from datetime import datetime, UTC
+
+from sqlalchemy import text
+
 from app.db.session import SessionLocal, init_db
 from app.repositories.UserRepo import UserRepository
 from app.repositories.ListenerRepo import ListenerRepo
@@ -8,11 +12,23 @@ from app.repositories.PlaylistRepo import PlaylistRepo
 from app.repositories.FocusSessionRepo import FocusSessionRepo
 
 
+TABLES = '"User", "Mood", "Track", "Playlist", "FocusSession"'
+
+
+def cleanup(db):
+    """Удаляет все данные, добавленные демонстрацией, и сбрасывает SERIAL."""
+    db.execute(text(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE"))
+    db.commit()
+
+
 def main():
     init_db()
     db = SessionLocal()
 
     try:
+        cleanup(db)
+        print("=== БД очищена перед запуском ===\n")
+
         # 1. Создание пользователей
         print("=== Создание Listener и Administrator ===")
         listener_repo = ListenerRepo(db)
@@ -77,7 +93,6 @@ def main():
         # 7. FocusSession
         print("\n=== FocusSession ===")
         session_repo = FocusSessionRepo(db)
-        from datetime import datetime, UTC
         fs = session_repo.create(
             listener=listener, playlist=playlist,
             started_at=datetime.now(UTC),
@@ -92,15 +107,34 @@ def main():
         db.commit()
         print(f"Updated track: {updated.title}")
 
-        # 9. Удаление и каскад
-        print("\n=== Удаление Playlist (каскад на FocusSession) ===")
-        playlist_repo.delete(playlist.id)
+        # 9. Удаление через репозиторий (демонстрация Delete)
+        print("\n=== Delete через репозиторий ===")
+        assert track_repo.delete(track.id) is True
         db.commit()
-        sessions = session_repo.list_by_listener(listener.id)
-        print(f"Sessions after playlist delete: {len(sessions)}")
+        print(f"Track id={track.id} удалён (каскад на TrackMood/PlaylistTrack/Favourite)")
 
+        session_before = session_repo.list_by_listener(listener.id)
+        assert playlist_repo.delete(playlist.id) is True
+        db.commit()
+        session_after = session_repo.list_by_listener(listener.id)
+        print(f"Playlist id={playlist.id} удалён")
+        print(f"  FocusSession до: {len(session_before)}, после: {len(session_after)}")
+
+        mood_repo.delete(chill.id)
+        mood_repo.delete(focus.id)
+        db.commit()
+        print(f"Moods Chill/Focus удалены")
+
+        print("\n=== Демонстрация завершена ===")
+
+    except Exception as e:
+        db.rollback()
+        print(f"\n!!! Ошибка: {e}")
+        raise
     finally:
+        cleanup(db)
         db.close()
+        print("\n=== БД очищена после запуска ===")
 
 
 if __name__ == "__main__":
