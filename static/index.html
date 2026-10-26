@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LofiFocus</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
+    code { background: #eee; padding: 0 .25em; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>LofiFocus</h1>
+  <p>Эта страница отдаётся Nginx напрямую как статический файл (<code>/static/index.html</code>).</p>
+  <p>Запросы к REST API Nginx перенаправляет на бэкенд:</p>
+  <ul>
+    <li><a href="/docs">/docs</a> — Swagger UI</li>
+    <li><a href="/health">/health</a> — проверка работоспособности</li>
+  </ul>
+</body>
+</html>

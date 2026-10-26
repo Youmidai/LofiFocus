@@ -1,3 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lofifocus"
+version = "0.2.0"
+description = "LofiFocus"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "alembic>=1.16",
+    "psycopg2-binary>=2.9",
+    "fastapi>=0.115",
+    "pydantic[email]>=2.7",
+    "pyjwt>=2.8",
+    "pwdlib[argon2]>=0.2",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+prod = [
+    "gunicorn>=22",
+    "uvicorn-worker>=0.2",
+]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+extend-select = [
+    "FAST", "ANN", "ASYNC", "BLE", "B", "A", "ICN", "LOG",
+    "G", "SIM", "NPY", "PD", "E", "W", ]

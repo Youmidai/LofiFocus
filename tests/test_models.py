@@ -160,3 +160,4 @@ def test_focus_session(db):
 
     assert session.id is not None
     assert session.listener == listener
+
