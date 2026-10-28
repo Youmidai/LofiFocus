@@ -5,6 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lofifocus"
 version = "0.2.0"
+[project]
+name = "lofifocus"
+version = "0.1.0"
 description = "LofiFocus"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,3 +44,13 @@ testpaths = ["tests"]
 extend-select = [
     "FAST", "ANN", "ASYNC", "BLE", "B", "A", "ICN", "LOG",
     "G", "SIM", "NPY", "PD", "E", "W", ]
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
