@@ -360,6 +360,61 @@ class TestM2MRelations:
             {"id": track_id},
         ).all()
         assert rows == []
+    def test_playlist_creator(self, db, seed):
+        """Playlist.creator ссылается на Administrator."""
+        pl = seed["playlists"][0]
+        assert pl.creator is not None
+        assert pl.creator.id == pl.created_by
+        assert pl.creator.type == "administrator"
+
+    def test_playlist_mood(self, db, seed):
+        """Playlist.mood ссылается на Mood."""
+        pl = seed["playlists"][0]
+        assert pl.mood is not None
+        assert pl.mood.id == pl.mood_id
+
+    def test_playlist_sessions(self, db, seed):
+        """Playlist.sessions содержит FocusSession."""
+        pl = seed["playlists"][0]
+        assert len(pl.sessions) >= 1
+        assert all(s.playlist_id == pl.id for s in pl.sessions)
+
+    def test_track_added_by(self, db, seed):
+        """Track.added_by ссылается на Administrator."""
+        track = seed["tracks"][0]
+        assert track.added_by is not None
+        assert track.added_by.id == track.added_by_id
+        assert track.added_by.type == "administrator"
+
+    def test_administrator_playlists(self, db, seed):
+        """Administrator.playlists содержит Playlist'ы."""
+        admin = seed["admins"][0]
+        assert len(admin.playlists) >= 1
+        assert all(p.created_by == admin.id for p in admin.playlists)
+
+    def test_administrator_tracks(self, db, seed):
+        """Administrator.tracks содержит Track'и."""
+        admin = seed["admins"][0]
+        assert len(admin.tracks) >= 1
+        assert all(t.added_by_id == admin.id for t in admin.tracks)
+
+    def test_mood_playlists(self, db, seed):
+        """Mood.playlists содержит Playlist'ы."""
+        mood = seed["moods"][0]
+        assert len(mood.playlists) >= 1
+        assert all(p.mood_id == mood.id for p in mood.playlists)
+
+    def test_listener_sessions(self, db, seed):
+        """Listener.sessions содержит FocusSession."""
+        listener = seed["listeners"][0]
+        assert len(listener.sessions) >= 1
+        assert all(s.listener_id == listener.id for s in listener.sessions)
+
+    def test_focus_session_playlist(self, db, seed):
+        """FocusSession.playlist ссылается на Playlist."""
+        s = seed["sessions"][0]
+        assert s.playlist is not None
+        assert s.playlist.id == s.playlist_id
 
 
 class TestCascade:

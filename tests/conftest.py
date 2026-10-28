@@ -20,7 +20,7 @@ TEST_DB_NAME = "lofidb_test"
 
 def _admin_engine():
     return create_engine(
-        f"postgresql://{config['admin_user']}:{config['admin_password']}"
+        f"postgresql+psycopg2://{config['admin_user']}:{config['admin_password']}"
         f"@{config['db_host']}/postgres?client_encoding=utf8",
         isolation_level="AUTOCOMMIT",
     )
@@ -62,7 +62,7 @@ def engine():
     _create_test_db()
 
     test_engine = create_engine(
-        f"postgresql://{config['admin_user']}:{config['admin_password']}"
+        f"postgresql+psycopg2://{config['admin_user']}:{config['admin_password']}"
         f"@{config['db_host']}/{TEST_DB_NAME}?client_encoding=utf8",
     )
     Base.metadata.create_all(test_engine)
