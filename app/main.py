@@ -9,16 +9,16 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app import models  # noqa: F401 — регистрирует все ORM-модели и таблицы связей
-from app.api.routers import auth, favourites, moods, playlists, sessions, tracks
+from app.api.routers import auth, favourites, moods, playlists, sessions, tracks, recommendations
 from app.repositories.Exceptions import DuplicateError, RepositoryError
 
 app = FastAPI(
     title="LofiFocus API",
     version="0.2.0",
-    description="REST API для сервиса LofiFocus: треки, плейлисты, настроения и фокус-сессии.",
+    description="REST API для сервиса LofiFocus: треки, плейлисты, настроения, фокус-сессии и рекомендации.",
 )
 
-for module in (auth, moods, tracks, playlists, favourites, sessions):
+for module in (auth, moods, tracks, playlists, favourites, sessions, recommendations):
     app.include_router(module.router)
 
 
@@ -43,4 +43,3 @@ async def integrity_handler(_: Request, exc: IntegrityError) -> JSONResponse:
 @app.exception_handler(RepositoryError)
 async def repository_handler(_: Request, exc: RepositoryError) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=status.HTTP_400_BAD_REQUEST)
-
