@@ -1,130 +1,94 @@
-"""Простой gRPC-сервер рекомендаций для LofiFocus.
+"""gRPC-сервер рекомендаций для LofiFocus.
 
-Сервер использует PostgreSQL через SQLAlchemy-модели и считает
-"популярность" плейлистов/треков по статистике фокус-сессий.
-
-В учебных целях сервер можно запускать отдельно от FastAPI.
+Использует общий engine/SessionLocal и репозитории, как основной API.
 """
 
 from concurrent import futures
-from typing import Iterable
 
 import grpc
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_db_url
-from app.models.FocusSession import FocusSession
-from app.models.Playlist import Playlist
-from app.models.Track import Track
-from app.models.Mood import Mood
-from app.models.Base import Base
-
+from app.db.session import SessionLocal, init_db
+from app.repositories.FocusSessionRepo import FocusSessionRepo
+from app.repositories.PlaylistRepo import PlaylistRepo
+from app.repositories.TrackRepo import TrackRepo
 from proto import recommendations_pb2, recommendations_pb2_grpc
 
 
-def _create_session() -> Session:
-  from sqlalchemy import create_engine
-  from sqlalchemy.orm import sessionmaker
-
-  engine = create_engine(get_db_url(), echo=False)
-  Base.metadata.create_all(engine)
-  return sessionmaker(bind=engine)()
-
-
 class RecommendationService(recommendations_pb2_grpc.RecommendationServiceServicer):
-  """Реализация gRPC-интерфейса рекомендаций.
+    def __init__(self, db: Session) -> None:
+        self.db = db
+        self.sessions = FocusSessionRepo(db)
+        self.playlists = PlaylistRepo(db)
+        self.tracks = TrackRepo(db)
 
-  Логика предельно простая:
-  - для плейлистов считаем, сколько фокус-сессий запускалось с каждым
-    плейлистом (по listener_id и/или mood_id);
-  - для треков считаем количество сессий по плейлисту, умноженное на
-    количество вхождений трека в плейлист.
-  """
+    def RecommendPlaylists(
+        self,
+        request: recommendations_pb2.PlaylistRecommendationRequest,
+        context: grpc.ServicerContext,
+    ) -> recommendations_pb2.PlaylistRecommendationResponse:
+        limit = request.limit or 10
 
-  def __init__(self, db: Session) -> None:
-    self.db = db
+        # берём все сессии слушателя и считаем, какие плейлисты встречаются чаще
+        sessions = self.sessions.list_by_listener(request.listener_id) if request.listener_id else self.sessions.list_active()
 
-  # ----- плейлисты -----
-  def RecommendPlaylists(self, request: recommendations_pb2.PlaylistRecommendationRequest,
-                         context: grpc.ServicerContext) -> recommendations_pb2.PlaylistRecommendationResponse:
-    limit = request.limit or 10
+        score: dict[int, int] = {}
+        for s in sessions:
+            if request.mood_id and s.playlist.mood_id != request.mood_id:
+                continue
+            score[s.playlist_id] = score.get(s.playlist_id, 0) + 1
 
-    stmt = select(
-      Playlist.id.label("playlist_id"),
-      Playlist.mood_id.label("mood_id"),
-      func.count(FocusSession.id).label("score"),
-    ).join(FocusSession, FocusSession.playlist_id == Playlist.id)
+        # сортируем по счёту и ограничиваем
+        sorted_ids = sorted(score.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-    if request.listener_id:
-      stmt = stmt.where(FocusSession.listener_id == request.listener_id)
-    if request.mood_id:
-      stmt = stmt.where(Playlist.mood_id == request.mood_id)
+        response = recommendations_pb2.PlaylistRecommendationResponse()
+        for playlist_id, s in sorted_ids:
+            pl = self.playlists.read(playlist_id)
+            if pl is None:
+                continue
+            response.playlists.add(playlist_id=pl.id, mood_id=pl.mood_id, score=s)
+        return response
 
-    stmt = stmt.group_by(Playlist.id).order_by(func.count(FocusSession.id).desc())
-    stmt = stmt.limit(limit)
+    def RecommendTracks(
+        self,
+        request: recommendations_pb2.TrackRecommendationRequest,
+        context: grpc.ServicerContext,
+    ) -> recommendations_pb2.TrackRecommendationResponse:
+        limit = request.limit or 10
 
-    rows: Iterable[tuple[int, int, int]] = self.db.execute(stmt)
+        sessions = self.sessions.list_by_listener(request.listener_id) if request.listener_id else self.sessions.list_active()
 
-    response = recommendations_pb2.PlaylistRecommendationResponse()
-    for row in rows:
-      response.playlists.add(
-        playlist_id=row.playlist_id,
-        mood_id=row.mood_id,
-        score=row.score,
-      )
-    return response
+        score: dict[int, int] = {}
+        for s in sessions:
+            pl = s.playlist
+            if request.mood_id and pl.mood_id != request.mood_id:
+                continue
+            for t in pl.tracks:
+                score[t.id] = score.get(t.id, 0) + 1
 
-  # ----- треки -----
-  def RecommendTracks(self, request: recommendations_pb2.TrackRecommendationRequest,
-                      context: grpc.ServicerContext) -> recommendations_pb2.TrackRecommendationResponse:
-    limit = request.limit or 10
+        sorted_ids = sorted(score.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-    from app.models.associations import playlist_track
-
-    # Считаем число сессий на плейлист * присутствие трека в плейлисте.
-    session_count = func.count(FocusSession.id).label("session_count")
-    score_expr = session_count
-
-    stmt = select(
-      Track.id.label("track_id"),
-      Mood.id.label("mood_id"),
-      score_expr.label("score"),
-    ).join(playlist_track, playlist_track.c.track_id == Track.id)
-    stmt = stmt.join(Playlist, Playlist.id == playlist_track.c.playlist_id)
-    stmt = stmt.join(FocusSession, FocusSession.playlist_id == Playlist.id)
-    stmt = stmt.join(Mood, Mood.id == Playlist.mood_id)
-
-    if request.listener_id:
-      stmt = stmt.where(FocusSession.listener_id == request.listener_id)
-    if request.mood_id:
-      stmt = stmt.where(Mood.id == request.mood_id)
-
-    stmt = stmt.group_by(Track.id, Mood.id).order_by(score_expr.desc()).limit(limit)
-
-    rows: Iterable[tuple[int, int, int]] = self.db.execute(stmt)
-
-    response = recommendations_pb2.TrackRecommendationResponse()
-    for row in rows:
-      response.tracks.add(
-        track_id=row.track_id,
-        mood_id=row.mood_id,
-        score=row.score,
-      )
-    return response
+        response = recommendations_pb2.TrackRecommendationResponse()
+        for track_id, s in sorted_ids:
+            t = self.tracks.read(track_id)
+            if t is None:
+                continue
+            first_mood = t.moods[0].id if t.moods else 0
+            response.tracks.add(track_id=t.id, mood_id=first_mood, score=s)
+        return response
 
 
 def serve(port: int = 50051) -> None:
-  """Запускает gRPC-сервер на указанном порту."""
-  server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-  db = _create_session()
-  recommendations_pb2_grpc.add_RecommendationServiceServicer_to_server(
-    RecommendationService(db), server,
-  )
-  server.add_insecure_port(f"[::]:{port}")
-  server.start()
-  server.wait_for_termination()
+    init_db()
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    db = SessionLocal()
+    recommendations_pb2_grpc.add_RecommendationServiceServicer_to_server(
+        RecommendationService(db), server,
+    )
+    server.add_insecure_port(f"[::]:{port}")
+    server.start()
+    server.wait_for_termination()
 
 
 if __name__ == "__main__":
-  serve()
+    serve()
