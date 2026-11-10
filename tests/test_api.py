@@ -12,6 +12,8 @@ from app.api.deps import get_db
 from app.main import app
 from app.core.security import hash_password
 from app.models.Administrator import Administrator
+from grpc_service import recommendation_client
+from app.api.routers import recommendations
 
 
 @pytest.fixture
@@ -260,3 +262,93 @@ def test_session_of_another_listener_is_hidden(client, admin_token, listener_tok
     client.post("/register", json={"email": "other@mail.com", "username": "other", "password": "password123"})
     other_token = login(client, "other", "password123")
     assert client.get(f"/sessions/{session_id}", headers=auth(other_token)).status_code == 404
+
+
+class _FakeRecommendationClient:
+    """Простая заглушка RecommendationClient для тестов."""
+
+    def __init__(self, playlists=None, tracks=None):
+        self._playlists = playlists or []
+        self._tracks = tracks or []
+
+    def recommend_playlists(self, listener_id, mood_id, limit=10):  # noqa: ARG002
+        class Resp:
+            playlists = self._playlists
+
+        return Resp()
+
+    def recommend_tracks(self, listener_id, mood_id, limit=10):  # noqa: ARG002
+        class Resp:
+            tracks = self._tracks
+
+        return Resp()
+
+
+class _FakePlaylistItem:
+    def __init__(self, playlist_id: int, mood_id: int, score: int = 1) -> None:
+        self.playlist_id = playlist_id
+        self.mood_id = mood_id
+        self.score = score
+
+
+class _FakeTrackItem:
+    def __init__(self, track_id: int, mood_id: int, score: int = 1) -> None:
+        self.track_id = track_id
+        self.mood_id = mood_id
+        self.score = score
+
+
+def test_recommend_playlists_uses_grpc_and_filters_by_mood(client, listener_token, admin_token, monkeypatch):
+    # готовим данные: настроение, плейлист под настроение и сессия
+    mood_id = create_mood(client, admin_token, "Focus")
+    other_mood_id = create_mood(client, admin_token, "Chill")
+
+    playlist_focus = create_playlist(client, admin_token, "F", mood_id, [])
+    playlist_chill = create_playlist(client, admin_token, "C", other_mood_id, [])
+
+    fake_items = [
+        _FakePlaylistItem(playlist_focus, mood_id, score=3),
+        _FakePlaylistItem(playlist_chill, other_mood_id, score=1),
+    ]
+
+    def _fake_client() -> _FakeRecommendationClient:
+        return _FakeRecommendationClient(playlists=fake_items)
+
+    # в этом тесте подменяем клиент внутри роутера, чтобы не ходить в настоящий gRPC-сервер
+    monkeypatch.setattr(recommendations, "_client", lambda: _fake_client())
+
+    response = client.get(
+        f"/recommendations/playlists?mood_id={mood_id}",
+        headers=auth(listener_token),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    ids = [pl["id"] for pl in body]
+    assert ids == [playlist_focus]
+
+
+def test_recommend_tracks_uses_grpc_and_filters_by_mood(client, listener_token, admin_token, monkeypatch):
+    mood_id = create_mood(client, admin_token, "Focus")
+    other_mood_id = create_mood(client, admin_token, "Chill")
+
+    t_focus = create_track(client, admin_token, "tf", [mood_id])
+    t_chill = create_track(client, admin_token, "tc", [other_mood_id])
+
+    fake_items = [
+        _FakeTrackItem(t_focus, mood_id, score=5),
+        _FakeTrackItem(t_chill, other_mood_id, score=2),
+    ]
+
+    def _fake_client() -> _FakeRecommendationClient:
+        return _FakeRecommendationClient(tracks=fake_items)
+
+    monkeypatch.setattr(recommendations, "_client", lambda: _fake_client())
+
+    response = client.get(
+        f"/recommendations/tracks?mood_id={mood_id}",
+        headers=auth(listener_token),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    ids = [t["id"] for t in body]
+    assert ids == [t_focus]
