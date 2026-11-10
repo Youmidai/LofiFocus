@@ -1,4 +1,4 @@
-.PHONY: test init-db run serve lint
+.PHONY: test init-db run serve lint run-grpc
 
 test:
 	pytest tests/ -v
@@ -15,3 +15,6 @@ serve:
 
 lint:
 	ruff check .
+
+run-grpc:
+	python -m grpc_service.recommendation_server

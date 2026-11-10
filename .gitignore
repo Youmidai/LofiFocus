@@ -53,6 +53,9 @@ dmypy.json
 .env.*
 !.env.example
 
+# локальные инструкции для агентов
+AGENTS.md
+
 # Логи
 *.log
 logs/

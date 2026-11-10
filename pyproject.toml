@@ -21,6 +21,9 @@ dependencies = [
     "pwdlib[argon2]>=0.2",
     "python-multipart>=0.0.9",
     "uvicorn>=0.30",
+    "grpcio>=1.65",
+    "grpcio-tools>=1.65",
+    "protobuf>=4.25",
 ]
 
 [project.optional-dependencies]
